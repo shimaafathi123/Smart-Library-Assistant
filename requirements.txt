@@ -1,5 +1,4 @@
+google-genai
+pandas
+openpyxl
 streamlit
-openai
-gspread
-google-auth
-google-genais
