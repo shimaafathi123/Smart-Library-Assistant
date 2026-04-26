@@ -1,34 +1,25 @@
 import streamlit as st
-from google import genai
 import pandas as pd
 
 # --- إعدادات الصفحة ---
-st.set_page_config(page_title="المساعد الذكي - حاسبات ", page_icon="🎓")
+st.set_page_config(page_title="مساعد مكتبة الحاسبات", page_icon="📚")
 st.title("📚 مساعد مكتبة كلية الحاسبات والذكاء الاصطناعي")
-st.markdown("##### جامعة  - نظام المساعدة الذكي لأعضاء هيئة التدريس")
 
-# --- 1. إدخال الـ API Key ---
-with st.sidebar:
-    st.image("https://bu.edu.eg/images/logo_fci.png", width=100) # اختياري: إضافة لوجو الكلية لو متاح
-    user_api_key = st.text_input("إعدادات الاتصال (API Key):", 
-                                value="AIzaSyA7aIoqgpJo4eh2LNlSZKLCwfgUVHR1CVA", 
-                                type="password")
-    st.divider()
-    st.info("نظام مدعوم بـ Gemini 2.5 🚀")
-
-# --- 2. تحميل البيانات ---
+# --- 1. تحميل البيانات ---
 @st.cache_data
 def load_data():
     try:
         df = pd.read_excel("Library_DB.xlsx")
-        return df.to_dict(orient='records')
+        # تنظيف البيانات لضمان دقة البحث
+        df.columns = [c.strip() for c in df.columns] 
+        return df.fillna("غير متوفر")
     except Exception as e:
         st.error(f"ملف Library_DB.xlsx غير موجود: {e}")
-        return []
+        return pd.DataFrame()
 
-books_data = load_data()
+df_books = load_data()
 
-# --- 3. واجهة الشات ---
+# --- 2. واجهة المحادثة ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -36,42 +27,44 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. منطق المحادثة ---
+# --- 3. منطق الرد (بدون API Key) ---
 if prompt := st.chat_input("كيف يمكنني مساعدتك يا دكتور؟"):
-    if not user_api_key:
-        st.error("رجاءً أدخل الـ API Key أولاً.")
-    else:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            try:
-                client = genai.Client(api_key=user_api_key)
+    with st.chat_message("assistant"):
+        response = ""
+        
+        # أ. الإجابة على الأسئلة العامة (مواعيد، استعارة)
+        low_prompt = prompt.lower()
+        if "مواعيد" in low_prompt or "وقت" in low_prompt:
+            response = "🕒 **مواعيد العمل:** من الأحد إلى الخميس، من الساعة 9 صباحاً وحتى 3 عصراً."
+        
+        elif "استعار" in low_prompt or "آلية" in low_prompt:
+            response = ("📖 **نظام الاستعارة:**\n"
+                        "1. متاح الاستعارة لأعضاء هيئة التدريس والطلاب.\n"
+                        "2. الحد الأقصى كتابين لمدة أسبوعين.\n"
+                        "3. يتم ذلك من خلال كارنيه الكلية عبر مكتب شؤون الطلاب.")
+        
+        # ب. البحث عن كتاب في قاعدة البيانات
+        else:
+            if not df_books.empty:
+                # البحث في جميع الأعمدة عن كلمات البحث
+                query_words = prompt.split()
+                # فلترة البيانات التي تحتوي على الكلمات المطلوبة
+                results = df_books[df_books.apply(lambda row: any(word.lower() in str(row).lower() for word in query_words), axis=1)]
                 
-                # تحويل البيانات لنص منظم ليفهمه الـ AI بشكل أفضل
-                context_info = str(books_data)
-                
-                # إرشادات النظام المطورة
-                system_instruction = (
-                    "أنت ذكاء  متطور مخصص للعمل كمساعد ذكي لمكتبة كلية = والذكاء الاصطناعي . "
-                    "مهمتك هي مساعدة الدكاترة والباحثين في العثور على الكتب والمعلومات.\n\n"
-                    "قواعد العمل:\n"
-                    "1. استخدم البيانات المرفقة فقط للإجابة: " + context_info + "\n"
-                    "2. تحدث بلهجة مهنية ولبقة تليق بالحرم الجامعي.\n"
-                    "3. إذا طلب المستخدم كتاباً غير موجود، اقترح عليه أقرب تخصص متاح في البيانات.\n"
-                    "4. إذا كانت البيانات تحتوي على مواعيد إرجاع أو أماكن أرفف، اذكرها بوضوح.\n"
-                    "5. عرف نفسك دائماً (عند الحاجة) بأنك 'المساعد الذكي لمكتبة  '."
-                )
+                if not results.empty:
+                    response = f"✅ وجدنا {len(results)} كتاب مطابقت لبحثك:\n\n"
+                    for i, row in results.head(5).iterrows(): # عرض أول 5 نتائج فقط
+                        response += f"📖 **الكتاب:** {row.get('العنوان', 'غير متوفر')} | **المؤلف:** {row.get('المؤلف', 'غير متوفر')} | **الرف:** {row.get('رقم الرف', 'غير متوفر')}\n\n"
+                    if len(results) > 5:
+                        response += "*(هناك نتائج أخرى، يرجى تحديد البحث أكثر)*"
+                else:
+                    response = "❌ عذراً، هذا الكتاب غير موجود حالياً في قاعدة البيانات. يمكنك تجربة البحث بكلمة مفتاحية أخرى."
+            else:
+                response = "⚠️ قاعدة البيانات غير محملة، يرجى التأكد من وجود ملف Library_DB.xlsx."
 
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash", 
-                    contents=f"{system_instruction}\n\nسؤال المستخدم: {prompt}"
-                )
-                
-                if response.text:
-                    st.markdown(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
-                    
-            except Exception as e:
-                st.error(f"عذراً، حدث خطأ تقني: {e}")
+        st.markdown(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
