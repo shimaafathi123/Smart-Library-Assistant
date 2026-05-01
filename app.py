@@ -1,117 +1,146 @@
 import streamlit as st
 import pandas as pd
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="المساعد الذكي المحلي", page_icon="🎓")
-st.title("📚 مساعد مكتبة الحاسبات الذكي")
+# --- 1. إعدادات الصفحة ---
+st.set_page_config(page_title="المساعد الذكي", page_icon="🎓", layout="centered")
 
-# --- 1. تحميل البيانات ---
+# --- 2. CSS احترافي لإخفاء الأيقونات وتعديل شكل الشات ---
+st.markdown("""
+    <style>
+    /* إلغاء المسافات البيضاء في أعلى الصفحة */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 0rem !important;
+    }
+    
+    /* إخفاء أيقونات الشات (User and Assistant Icons) */
+    [data-testid="stChatMessageAvatarUser"],
+    [data-testid="stChatMessageAvatarAssistant"] {
+        display: none !important;
+    }
+    
+    /* تعديل إزاحة الرسالة بعد إخفاء الأيقونة لتأخذ المساحة كاملة */
+    [data-testid="stChatMessageContent"] {
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+    }
+
+    /* تنسيق الهيدر (اللوجو والعنوان) */
+    .header-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .welcome-text {
+        font-weight: 800;
+        color: #111827;
+        font-size: 2.2rem;
+        margin-top: 10px;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    /* ستايل شات جي بي تي للرسائل */
+    .stChatMessage {
+        padding: 1.5rem !important;
+        border-bottom: 1px solid #ececf1 !important;
+        background-color: transparent !important;
+    }
+    
+    .stChatMessage[data-testimonial="assistant"] {
+        background-color: #f7f7f8 !important;
+    }
+
+    .stMarkdown p {
+        font-size: 1.1rem !important;
+        line-height: 1.7 !important;
+        color: #374151 !important;
+    }
+
+    /* إخفاء عناصر Streamlit غير الضرورية */
+    #MainMenu, footer, header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 3. عرض اللوجو والعنوان ---
+st.markdown('<div class="header-wrapper">', unsafe_allow_html=True)
+try:
+    st.image("logo.png", width=100)
+except:
+    pass
+st.markdown('<p class="welcome-text">أهلاً بك في مكتبة الكلية</p>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 4. تحميل البيانات ---
 @st.cache_data
 def load_data():
     try:
         df_books = pd.read_excel("Library_DB.xlsx", sheet_name="Books")
         df_faq = pd.read_excel("Library_DB.xlsx", sheet_name="FAQ")
         return df_books.fillna(""), df_faq.fillna("")
-    except Exception as e:
-        st.error(f"تأكد من وجود ملف Library_DB.xlsx وبداخله صفحات Books و FAQ. الخطأ: {e}")
+    except:
         return pd.DataFrame(), pd.DataFrame()
 
 df_books, df_faq = load_data()
 
-# --- 2. محرك المنطق المخصص ---
+# --- 5. منطق الرد ---
 def local_ai_logic(user_input):
     clean_input = user_input.strip().lower()
     
-    # أ. الرد الخاص بالاستعارة
-    borrow_keywords = ["استعارة", "استعار", "استلف", "استلاف", "استعير", "كارنيه"]
-    if any(word in clean_input for word in borrow_keywords):
+    if any(word in clean_input for word in ["استعارة", "استلاف", "استلف"]):
         return "ℹ️ **خدمة الاستعارة:**\n\nخدمة الاستعارة داخل المكتبة متاحة فقط لأعضاء هيئة التدريس. ويتم استعراض المواد المتاحة من خلال التوجه إلى المكتبة، كما يتم تسجيل الاستعارة من داخل المكتبة فقط."
 
-    # ب. عرض كل الكتب الموجودة
-    all_books_keywords = ["كل الكتب", "عرض الكل", "جميع الكتب", "المكتبة فيها إيه", "المحتويات"]
-    if any(word in clean_input for word in all_books_keywords):
+    if any(word in clean_input for word in ["كل الكتب", "عرض الكل", "المكتبة فيها إيه"]):
         if not df_books.empty:
-            response = f"📚 **إليك قائمة بجميع الكتب المتاحة ({len(df_books)} كتاب):**\n\n"
+            res = f"📚 **قائمة الكتب المتاحة ({len(df_books)} كتاب):**\n\n"
             for i, row in df_books.iterrows():
-                response += f"{i+1}. **{row['العنوان']}** - للمؤلف: {row['المؤلف']}\n"
-            return response
-        else:
-            return "⚠️ المكتبة لا تحتوي على كتب مسجلة حالياً."
+                res += f"{i+1}. **{row['العنوان']}** — {row['المؤلف']}\n"
+            return res
+        return "⚠️ لا توجد كتب مسجلة حالياً."
 
-    # ج. البحث عن كتاب محدد (يجب أن يبدأ بكلمة "كتاب")
-    elif clean_input.startswith("كتاب"):
-        target_book = clean_input.replace("كتاب", "", 1).strip()
-        if not df_books.empty and target_book:
-            match = df_books[df_books['العنوان'].astype(str).str.lower() == target_book]
-            if not match.empty:
-                book_info = match.iloc[0]
-                return f"✅ **نعم، الكتاب متوفر!** إليك تفاصيله:\n\n" \
-                       f"📘 **العنوان:** {book_info['العنوان']}\n" \
-                       f"👤 **المؤلف:** {book_info['المؤلف']}\n" \
-                       f"🏢 **الناشر:** {book_info['الناشر']} | 🔢 **الطبعة:** {book_info['الطبعة']}\n" \
-                       f"📅 **تاريخ النشر:** {book_info['تاريخ النشر']} | 📑 **الفئة:** {book_info['الفئة']}"
-            else:
-                return f"❌ للأسف، كتاب '{target_book}' غير موجود حالياً."
-        else:
-            return "يرجى كتابة اسم الكتاب بعد كلمة 'كتاب'."
+    if clean_input.startswith("كتاب"):
+        name = clean_input.replace("كتاب", "", 1).strip()
+        match = df_books[df_books['العنوان'].astype(str).str.lower() == name]
+        if not match.empty:
+            b = match.iloc[0]
+            return f"✅ **الكتاب متوفر!**\n\n**📘 العنوان:** {b['العنوان']}\n**👤 المؤلف:** {b['المؤلف']}\n**🏢 الناشر:** {b['الناشر']}\n**📅 التاريخ:** {b['تاريخ النشر']}"
+        return f"❌ للأسف كتاب '{name}' غير موجود."
 
-    # د. البحث عن مؤلف (يجب أن يبدأ بكلمة "المؤلف")
-    elif clean_input.startswith("المؤلف"):
-        target_author = clean_input.replace("المؤلف", "", 1).strip()
-        if not df_books.empty and target_author:
-            author_matches = df_books[df_books['المؤلف'].astype(str).str.lower() == target_author]
-            if not author_matches.empty:
-                response = f"👤 **إليك جميع الكتب المتاحة للمؤلف '{author_matches.iloc[0]['المؤلف']}':**\n\n"
-                for i, row in author_matches.iterrows():
-                    response += f"{i+1}. **{row['العنوان']}** (طبعة: {row['الطبعة']})\n"
-                return response
-            else:
-                return f"❌ عذراً، لم نجد أي كتب مسجلة للمؤلف '{target_author}'."
-        else:
-            return "يرجى كتابة اسم المؤلف بعد كلمة 'المؤلف'."
+    if clean_input.startswith("المؤلف"):
+        auth = clean_input.replace("المؤلف", "", 1).strip()
+        matches = df_books[df_books['المؤلف'].astype(str).str.lower() == auth]
+        if not matches.empty:
+            res = f"👤 **كتب للمؤلف '{matches.iloc[0]['المؤلف']}':**\n\n"
+            for i, row in matches.iterrows():
+                res += f"- **{row['العنوان']}**\n"
+            return res
+        return f"❌ لم نجد كتباً للمؤلف '{auth}'."
 
-    # هـ. الردود العامة من الـ FAQ
-    if not df_faq.empty:
-        for _, row in df_faq.iterrows():
-            keywords = [k.strip().lower() for k in str(row['Keywords']).split(',')]
-            if any(key in clean_input for key in keywords if key != ""):
-                return row['Answer']
+    for _, row in df_faq.iterrows():
+        keys = [k.strip().lower() for k in str(row['Keywords']).split(',')]
+        if any(k in clean_input for k in keys if k):
+            return row['Answer']
 
-    return "أهلاً بك! للبحث استخدم الصيغ التالية:\n" \
-           "- **كل الكتب**: لعرض قائمة المكتبة كاملة.\n" \
-           "- **كتاب [اسم الكتاب]**: للبحث عن تفاصيل كتاب.\n" \
-           "- **المؤلف [اسم المؤلف]**: لعرض كتب مؤلف معين.\n" \
-           "- أو اسأل عن نظام الاستعارة."
+    return "أهلاً بك! يمكنك البحث بـ: **كتاب [الاسم]** أو **المؤلف [الاسم]** أو اكتب **كل الكتب**."
 
-# --- 3. واجهة المحادثة ورسالة الترحيب ---
+# --- 6. واجهة الشات ---
 if "messages" not in st.session_state:
-    # إضافة رسالة ترحيب مثبتة تظهر أول مرة فقط
     st.session_state.messages = [
-        {
-            "role": "assistant", 
-            "content": "أهلاً بك في نظام المساعد الذكي لمكتبة كلية الحاسبات! 👋\n\n"
-                       "يمكنني مساعدتك في:\n"
-                       "1️⃣ البحث عن **كتاب** معين وتفاصيله.\n"
-                       "2️⃣ عرض كل كتب **مؤلف** محدد.\n"
-                       "3️⃣ عرض **جميع الكتب** المتاحة بالمكتبة.\n"
-                       "4️⃣ الإجابة على استفسارات **الاستعارة** والمواعيد.\n\n"
-                       "كيف يمكنني مساعدتك اليوم؟"
-        }
+        {"role": "assistant", "content": "مرحباً بك! 👋 كيف يمكنني مساعدتك في مكتبة الكلية اليوم؟"}
     ]
 
-# عرض الرسائل المخزنة في الـ session
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. استقبال مدخلات اليوزر ---
-if prompt := st.chat_input("مثال: كتاب Python Programming أو كل الكتب"):
-    # عرض رسالة المستخدم
+if prompt := st.chat_input("اسألني عن كتاب أو مؤلف..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # توليد وعرض رد البوت
     with st.chat_message("assistant"):
         response = local_ai_logic(prompt)
         st.markdown(response)
