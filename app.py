@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-# --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="المساعد الذكي", page_icon="🎓", layout="centered")
 
-# --- 2. CSS احترافي لإخفاء الأيقونات وتعديل شكل الشات ---
 st.markdown("""
     <style>
     /* إلغاء المسافات البيضاء في أعلى الصفحة */
@@ -65,7 +63,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. عرض اللوجو والعنوان ---
 st.markdown('<div class="header-wrapper">', unsafe_allow_html=True)
 try:
     st.image("logo.png", width=100)
@@ -74,7 +71,6 @@ except:
 st.markdown('<p class="welcome-text">أهلاً بك في مكتبة الكلية</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 4. تحميل البيانات ---
 @st.cache_data
 def load_data():
     try:
@@ -126,7 +122,6 @@ def local_ai_logic(user_input):
 
     return "أهلاً بك! يمكنك البحث بـ: **كتاب [الاسم]** أو **المؤلف [الاسم]** أو اكتب **كل الكتب**."
 
-# --- 6. واجهة الشات ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "مرحباً بك! 👋 كيف يمكنني مساعدتك في مكتبة الكلية اليوم؟"}
