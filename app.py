@@ -1,142 +1,92 @@
 import streamlit as st
 import pandas as pd
+from google import genai  # المكتبة الجديدة
 
+# --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="المساعد الذكي", page_icon="🎓", layout="centered")
 
+# --- 2. إعداد الـ API (النسخة الجديدة) ---
+# ملحوظة: تأكدي من تثبيت المكتبة عبر: pip install google-genai
+API_KEY = "AIzaSyBJbtTf0kWknQnA4Ez5fmYQOBrDJQPGcnU"
+client = genai.Client(api_key=API_KEY)
+
+# --- 3. CSS لشكل ChatGPT وإخفاء الأيقونات ---
 st.markdown("""
     <style>
-    /* إلغاء المسافات البيضاء في أعلى الصفحة */
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 0rem !important;
-    }
-    
-    /* إخفاء أيقونات الشات (User and Assistant Icons) */
-    [data-testid="stChatMessageAvatarUser"],
-    [data-testid="stChatMessageAvatarAssistant"] {
-        display: none !important;
-    }
-    
-    /* تعديل إزاحة الرسالة بعد إخفاء الأيقونة لتأخذ المساحة كاملة */
-    [data-testid="stChatMessageContent"] {
-        margin-left: 0 !important;
-        padding-left: 0 !important;
-    }
-
-    /* تنسيق الهيدر (اللوجو والعنوان) */
-    .header-wrapper {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    
-    .welcome-text {
-        font-weight: 800;
-        color: #111827;
-        font-size: 2.2rem;
-        margin-top: 10px;
-        font-family: 'Segoe UI', sans-serif;
-    }
-
-    /* ستايل شات جي بي تي للرسائل */
-    .stChatMessage {
-        padding: 1.5rem !important;
-        border-bottom: 1px solid #ececf1 !important;
-        background-color: transparent !important;
-    }
-    
-    .stChatMessage[data-testimonial="assistant"] {
-        background-color: #f7f7f8 !important;
-    }
-
-    .stMarkdown p {
-        font-size: 1.1rem !important;
-        line-height: 1.7 !important;
-        color: #374151 !important;
-    }
-
-    /* إخفاء عناصر Streamlit غير الضرورية */
+    .block-container { padding-top: 2rem !important; }
+    [data-testid="stChatMessageAvatarUser"], [data-testid="stChatMessageAvatarAssistant"] { display: none !important; }
+    [data-testid="stChatMessageContent"] { margin-left: 0 !important; padding-left: 0 !important; }
+    .header-wrapper { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 2rem; }
+    .welcome-text { font-weight: 800; color: #111827; font-size: 2.2rem; margin-top: 10px; font-family: 'Segoe UI', sans-serif; }
+    .stChatMessage { padding: 1.5rem !important; border-bottom: 1px solid #ececf1 !important; background-color: transparent !important; }
+    .stChatMessage[data-testimonial="assistant"] { background-color: #f7f7f8 !important; }
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
+# --- 4. الهيدر (اللوجو والعنوان) ---
 st.markdown('<div class="header-wrapper">', unsafe_allow_html=True)
-try:
-    st.image("logo.png", width=100)
-except:
-    pass
+try: st.image("logo.png", width=100)
+except: pass
 st.markdown('<p class="welcome-text">أهلاً بك في مكتبة الكلية</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
+# --- 5. تحميل البيانات من الإكسيل ---
 @st.cache_data
-def load_data():
+def load_data_as_context():
     try:
         df_books = pd.read_excel("Library_DB.xlsx", sheet_name="Books")
         df_faq = pd.read_excel("Library_DB.xlsx", sheet_name="FAQ")
-        return df_books.fillna(""), df_faq.fillna("")
+        books_info = df_books.to_string(index=False)
+        faq_info = df_faq.to_string(index=False)
+        return books_info, faq_info
     except:
-        return pd.DataFrame(), pd.DataFrame()
+        return "", ""
 
-df_books, df_faq = load_data()
+books_context, faq_context = load_data_as_context()
 
-# --- 5. منطق الرد ---
-def local_ai_logic(user_input):
-    clean_input = user_input.strip().lower()
-    
-    if any(word in clean_input for word in ["استعارة", "استلاف", "استلف"]):
-        return "ℹ️ **خدمة الاستعارة:**\n\nخدمة الاستعارة داخل المكتبة متاحة فقط لأعضاء هيئة التدريس. ويتم استعراض المواد المتاحة من خلال التوجه إلى المكتبة، كما يتم تسجيل الاستعارة من داخل المكتبة فقط."
-
-    if any(word in clean_input for word in ["كل الكتب", "عرض الكل", "المكتبة فيها إيه"]):
-        if not df_books.empty:
-            res = f"📚 **قائمة الكتب المتاحة ({len(df_books)} كتاب):**\n\n"
-            for i, row in df_books.iterrows():
-                res += f"{i+1}. **{row['العنوان']}** — {row['المؤلف']}\n"
-            return res
-        return "⚠️ لا توجد كتب مسجلة حالياً."
-
-    if clean_input.startswith("كتاب"):
-        name = clean_input.replace("كتاب", "", 1).strip()
-        match = df_books[df_books['العنوان'].astype(str).str.lower() == name]
-        if not match.empty:
-            b = match.iloc[0]
-            return f"✅ **الكتاب متوفر!**\n\n**📘 العنوان:** {b['العنوان']}\n**👤 المؤلف:** {b['المؤلف']}\n**🏢 الناشر:** {b['الناشر']}\n**📅 التاريخ:** {b['تاريخ النشر']}"
-        return f"❌ للأسف كتاب '{name}' غير موجود."
-
-    if clean_input.startswith("المؤلف"):
-        auth = clean_input.replace("المؤلف", "", 1).strip()
-        matches = df_books[df_books['المؤلف'].astype(str).str.lower() == auth]
-        if not matches.empty:
-            res = f"👤 **كتب للمؤلف '{matches.iloc[0]['المؤلف']}':**\n\n"
-            for i, row in matches.iterrows():
-                res += f"- **{row['العنوان']}**\n"
-            return res
-        return f"❌ لم نجد كتباً للمؤلف '{auth}'."
-
-    for _, row in df_faq.iterrows():
-        keys = [k.strip().lower() for k in str(row['Keywords']).split(',')]
-        if any(k in clean_input for k in keys if k):
-            return row['Answer']
-
-    return "أهلاً بك! يمكنك البحث بـ: **كتاب [الاسم]** أو **المؤلف [الاسم]** أو اكتب **كل الكتب**."
-
+# --- 6. واجهة الشات ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "مرحباً بك! 👋 كيف يمكنني مساعدتك في مكتبة الكلية اليوم؟"}
+        {"role": "assistant", "content": "مرحباً بك! 👋 أنا مساعدك الذكي المدعوم بالذكاء الاصطناعي. اسألني عن أي كتاب أو استفسار يخص المكتبة."}
     ]
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("اسألني عن كتاب أو مؤلف..."):
+# --- 7. منطق الذكاء الاصطناعي (API Logic المحدث) ---
+if prompt := st.chat_input("كيف يمكنني مساعدتك اليوم؟"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response = local_ai_logic(prompt)
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        system_prompt = f"""
+        أنت مساعد ذكي لمكتبة الكلية. وظيفتك الإجابة على أسئلة المستخدم بناءً على البيانات التالية فقط:
+        
+        بيانات الكتب المتاحة:
+        {books_context}
+        
+        الأسئلة الشائعة والقوانين:
+        {faq_context}
+        
+        قواعد هامة:
+        1. إذا سأل عن الاستعارة، أخبره أنها لأعضاء هيئة التدريس فقط وحضورياً.
+        2. إذا سأل عن كتاب، ابحث في البيانات وأعطه تفاصيله (العنوان، المؤلف، الناشر، إلخ).
+        3. أجب دائماً باللغة العربية بأسلوب مهذب.
+        4. إذا لم تجد المعلومة، اقترح مراجعة موظف المكتبة.
+        """
+        
+        try:
+            # استخدام الطريقة الجديدة لاستدعاء الموديل
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=f"{system_prompt}\n\nسؤال المستخدم: {prompt}"
+            )
+            
+            ai_response = response.text
+            st.markdown(ai_response)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
+        except Exception as e:
+            st.error(f"حدث خطأ في الاتصال: {e}")
