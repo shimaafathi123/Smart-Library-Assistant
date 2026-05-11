@@ -1,71 +1,92 @@
 import streamlit as st
 import pandas as pd
+from google import genai  # المكتبة الجديدة
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="مساعد مكتبة الحاسبات", page_icon="🤖")
-st.title("🤖 المساعد الذكي الموحد للمكتبة")
+# --- 1. إعدادات الصفحة ---
+st.set_page_config(page_title="المساعد الذكي", page_icon="🎓", layout="centered")
 
-# --- 1. تحميل البيانات من الشيت الموحد ---
+# --- 2. إعداد الـ API (النسخة الجديدة) ---
+# ملحوظة: تأكدي من تثبيت المكتبة عبر: pip install google-genai
+API_KEY = "AIzaSyBJbtTf0kWknQnA4Ez5fmYQOBrDJQPGcnU"
+client = genai.Client(api_key=API_KEY)
+
+# --- 3. CSS لشكل ChatGPT وإخفاء الأيقونات ---
+st.markdown("""
+    <style>
+    .block-container { padding-top: 2rem !important; }
+    [data-testid="stChatMessageAvatarUser"], [data-testid="stChatMessageAvatarAssistant"] { display: none !important; }
+    [data-testid="stChatMessageContent"] { margin-left: 0 !important; padding-left: 0 !important; }
+    .header-wrapper { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 2rem; }
+    .welcome-text { font-weight: 800; color: #111827; font-size: 2.2rem; margin-top: 10px; font-family: 'Segoe UI', sans-serif; }
+    .stChatMessage { padding: 1.5rem !important; border-bottom: 1px solid #ececf1 !important; background-color: transparent !important; }
+    .stChatMessage[data-testimonial="assistant"] { background-color: #f7f7f8 !important; }
+    #MainMenu, footer, header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 4. الهيدر (اللوجو والعنوان) ---
+st.markdown('<div class="header-wrapper">', unsafe_allow_html=True)
+try: st.image("logo.png", width=100)
+except: pass
+st.markdown('<p class="welcome-text">أهلاً بك في مكتبة الكلية</p>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 5. تحميل البيانات من الإكسيل ---
 @st.cache_data
-def load_unified_data():
-    file_path = "Library_DB.xlsx"
+def load_data_as_context():
     try:
-        # قراءة ورقة الأسئلة
-        df_faq = pd.read_excel(file_path, sheet_name="FAQ")
-        # قراءة ورقة الكتب
-        df_books = pd.read_excel(file_path, sheet_name="Books")
-        
-        # تنظيف البيانات
-        df_faq.columns = [str(c).strip() for c in df_faq.columns]
-        df_books.columns = [str(c).strip() for c in df_books.columns]
-        
-        return df_faq.fillna(""), df_books.fillna("غير متوفر")
-    except Exception as e:
-        st.error(f"تأكد من وجود ملف {file_path} وأن أسماء الصفحات FAQ و Books صحيحة.")
-        return pd.DataFrame(), pd.DataFrame()
+        df_books = pd.read_excel("Library_DB.xlsx", sheet_name="Books")
+        df_faq = pd.read_excel("Library_DB.xlsx", sheet_name="FAQ")
+        books_info = df_books.to_string(index=False)
+        faq_info = df_faq.to_string(index=False)
+        return books_info, faq_info
+    except:
+        return "", ""
 
-df_faq, df_books = load_unified_data()
+books_context, faq_context = load_data_as_context()
 
-# --- 2. واجهة المحادثة ---
+# --- 6. واجهة الشات ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {"role": "assistant", "content": "مرحباً بك! 👋 أنا مساعدك الذكي المدعوم بالذكاء الاصطناعي. اسألني عن أي كتاب أو استفسار يخص المكتبة."}
+    ]
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# --- 3. منطق الرد الذكي ---
-if prompt := st.chat_input("تفضل بسؤالك (ترحيب، استعارة، أو بحث عن كتاب)..."):
+# --- 7. منطق الذكاء الاصطناعي (API Logic المحدث) ---
+if prompt := st.chat_input("كيف يمكنني مساعدتك اليوم؟"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response = ""
-        low_prompt = prompt.lower().strip()
-        query_words = low_prompt.split()
-
-        # أ. البحث في الأسئلة الشائعة والترحيب (FAQ)
-        faq_match = df_faq[df_faq['Keywords'].apply(lambda k: any(w in str(k).lower() for w in query_words))]
+        system_prompt = f"""
+        أنت مساعد ذكي لمكتبة الكلية. وظيفتك الإجابة على أسئلة المستخدم بناءً على البيانات التالية فقط:
         
-        if not faq_match.empty:
-            response = faq_match.iloc[0]['Answer']
+        بيانات الكتب المتاحة:
+        {books_context}
         
-        # ب. إذا لم يجد في الـ FAQ، يبحث في الكتب (Books)
-        else:
-            if not df_books.empty:
-                book_results = df_books[df_books.apply(lambda row: any(w in str(row).lower() for w in query_words), axis=1)]
-                
-                if not book_results.empty:
-                    response = f"✅ وجدنا {len(book_results)} كتاب مطابق لبحثك:\n\n"
-                    for _, row in book_results.head(3).iterrows():
-                        response += f"📘 **{row.get('عنوان الكتاب', 'بدون عنوان')}**\n"
-                        response += f"✍️ المؤلف: {row.get('مؤلف الكتاب', 'غير معروف')} | 📅 {row.get('تاريخ النشر', '-')}\n"
-                        response += "--- \n"
-                else:
-                    response = "عذراً يا دكتور، لم أجد إجابة أو كتاباً بهذا الاسم. هل تقصد الاستفسار عن المواعيد أو نظام الاستعارة؟"
-            else:
-                response = "⚠️ قاعدة بيانات الكتب غير محملة."
-
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        الأسئلة الشائعة والقوانين:
+        {faq_context}
+        
+        قواعد هامة:
+        1. إذا سأل عن الاستعارة، أخبره أنها لأعضاء هيئة التدريس فقط وحضورياً.
+        2. إذا سأل عن كتاب، ابحث في البيانات وأعطه تفاصيله (العنوان، المؤلف، الناشر، إلخ).
+        3. أجب دائماً باللغة العربية بأسلوب مهذب.
+        4. إذا لم تجد المعلومة، اقترح مراجعة موظف المكتبة.
+        """
+        
+        try:
+            # استخدام الطريقة الجديدة لاستدعاء الموديل
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=f"{system_prompt}\n\nسؤال المستخدم: {prompt}"
+            )
+            
+            ai_response = response.text
+            st.markdown(ai_response)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
+        except Exception as e:
+            st.error(f"حدث خطأ في الاتصال: {e}")
