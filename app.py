@@ -2,69 +2,70 @@ import streamlit as st
 import pandas as pd
 
 # --- إعدادات الصفحة ---
-st.set_page_config(page_title="مساعد مكتبة الحاسبات", page_icon="📚")
-st.title("📚 مساعد مكتبة كلية الحاسبات والذكاء الاصطناعي")
+st.set_page_config(page_title="مساعد مكتبة الحاسبات", page_icon="🤖")
+st.title("🤖 المساعد الذكي الموحد للمكتبة")
 
-# --- 1. تحميل البيانات ---
+# --- 1. تحميل البيانات من الشيت الموحد ---
 @st.cache_data
-def load_data():
+def load_unified_data():
+    file_path = "Library_DB.xlsx"
     try:
-        df = pd.read_excel("Library_DB.xlsx")
-        # تنظيف البيانات لضمان دقة البحث
-        df.columns = [c.strip() for c in df.columns] 
-        return df.fillna("غير متوفر")
+        # قراءة ورقة الأسئلة
+        df_faq = pd.read_excel(file_path, sheet_name="FAQ")
+        # قراءة ورقة الكتب
+        df_books = pd.read_excel(file_path, sheet_name="Books")
+        
+        # تنظيف البيانات
+        df_faq.columns = [str(c).strip() for c in df_faq.columns]
+        df_books.columns = [str(c).strip() for c in df_books.columns]
+        
+        return df_faq.fillna(""), df_books.fillna("غير متوفر")
     except Exception as e:
-        st.error(f"ملف Library_DB.xlsx غير موجود: {e}")
-        return pd.DataFrame()
+        st.error(f"تأكد من وجود ملف {file_path} وأن أسماء الصفحات FAQ و Books صحيحة.")
+        return pd.DataFrame(), pd.DataFrame()
 
-df_books = load_data()
+df_faq, df_books = load_unified_data()
 
 # --- 2. واجهة المحادثة ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# --- 3. منطق الرد (بدون API Key) ---
-if prompt := st.chat_input("كيف يمكنني مساعدتك يا دكتور؟"):
+# --- 3. منطق الرد الذكي ---
+if prompt := st.chat_input("تفضل بسؤالك (ترحيب، استعارة، أو بحث عن كتاب)..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
         response = ""
+        low_prompt = prompt.lower().strip()
+        query_words = low_prompt.split()
+
+        # أ. البحث في الأسئلة الشائعة والترحيب (FAQ)
+        faq_match = df_faq[df_faq['Keywords'].apply(lambda k: any(w in str(k).lower() for w in query_words))]
         
-        # أ. الإجابة على الأسئلة العامة (مواعيد، استعارة)
-        low_prompt = prompt.lower()
-        if "مواعيد" in low_prompt or "وقت" in low_prompt:
-            response = "🕒 **مواعيد العمل:** من الأحد إلى الخميس، من الساعة 9 صباحاً وحتى 3 عصراً."
+        if not faq_match.empty:
+            response = faq_match.iloc[0]['Answer']
         
-        elif "استعار" in low_prompt or "آلية" in low_prompt:
-            response = ("📖 **نظام الاستعارة:**\n"
-                        "1. متاح الاستعارة لأعضاء هيئة التدريس والطلاب.\n"
-                        "2. الحد الأقصى كتابين لمدة أسبوعين.\n"
-                        "3. يتم ذلك من خلال كارنيه الكلية عبر مكتب شؤون الطلاب.")
-        
-        # ب. البحث عن كتاب في قاعدة البيانات
+        # ب. إذا لم يجد في الـ FAQ، يبحث في الكتب (Books)
         else:
             if not df_books.empty:
-                # البحث في جميع الأعمدة عن كلمات البحث
-                query_words = prompt.split()
-                # فلترة البيانات التي تحتوي على الكلمات المطلوبة
-                results = df_books[df_books.apply(lambda row: any(word.lower() in str(row).lower() for word in query_words), axis=1)]
+                book_results = df_books[df_books.apply(lambda row: any(w in str(row).lower() for w in query_words), axis=1)]
                 
-                if not results.empty:
-                    response = f"✅ وجدنا {len(results)} كتاب مطابقت لبحثك:\n\n"
-                    for i, row in results.head(5).iterrows(): # عرض أول 5 نتائج فقط
-                        response += f"📖 **الكتاب:** {row.get('العنوان', 'غير متوفر')} | **المؤلف:** {row.get('المؤلف', 'غير متوفر')} | **الرف:** {row.get('رقم الرف', 'غير متوفر')}\n\n"
-                    if len(results) > 5:
-                        response += "*(هناك نتائج أخرى، يرجى تحديد البحث أكثر)*"
+                if not book_results.empty:
+                    response = f"✅ وجدنا {len(book_results)} كتاب مطابق لبحثك:\n\n"
+                    for _, row in book_results.head(3).iterrows():
+                        response += f"📘 **{row.get('عنوان الكتاب', 'بدون عنوان')}**\n"
+                        response += f"✍️ المؤلف: {row.get('مؤلف الكتاب', 'غير معروف')} | 📅 {row.get('تاريخ النشر', '-')}\n"
+                        response += "--- \n"
                 else:
-                    response = "❌ عذراً، هذا الكتاب غير موجود حالياً في قاعدة البيانات. يمكنك تجربة البحث بكلمة مفتاحية أخرى."
+                    response = "عذراً يا دكتور، لم أجد إجابة أو كتاباً بهذا الاسم. هل تقصد الاستفسار عن المواعيد أو نظام الاستعارة؟"
             else:
-                response = "⚠️ قاعدة البيانات غير محملة، يرجى التأكد من وجود ملف Library_DB.xlsx."
+                response = "⚠️ قاعدة بيانات الكتب غير محملة."
 
         st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
