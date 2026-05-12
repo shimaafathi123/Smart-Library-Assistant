@@ -7,7 +7,7 @@ st.set_page_config(page_title="المساعد الذكي", page_icon="🎓", lay
 
 # --- 2. إعداد الـ API (النسخة الجديدة) ---
 # ملحوظة: تأكدي من تثبيت المكتبة عبر: pip install google-genai
-API_KEY = "AIzaSyAr-iNyV8to5r4pBRlA6VHqJK3vXEjTOP8"
+API_KEY = "AIzaSyDBS6iSMqwQoVdpCJMh3IDTVSdryu5MH0w"
 client = genai.Client(api_key=API_KEY)
 
 # --- 3. CSS لشكل ChatGPT وإخفاء الأيقونات ---
